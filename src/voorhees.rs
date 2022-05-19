@@ -11,6 +11,10 @@ pub enum Value {
 #[derive(Debug, PartialEq)]
 pub struct ParseError(String);
 
+fn is_whitespace(c: char) -> bool {
+    c == ' ' || c == '\t' || c == '\n' || c == '\r'
+}
+
 fn is_identifier(c: char) -> bool {
     (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
@@ -21,18 +25,22 @@ fn lex(s: &str) -> (&str, &str) {
     }
 
     let mut chars = s.char_indices();
-    let (_, c) = chars.next().unwrap();
+    let (_, mut c) = chars.next().unwrap();
 
-    let stop = |mut chars: CharIndices| {
+    while is_whitespace(c) {
+        if let Some((_, c_)) = chars.next() {
+            c = c_;
+        } else {
+            return ("", "");
+        }
+    }
+
+    if let Some(_) = "{}[]:,".find(c) {
         if let Some((ofs, _)) = chars.next() {
             s.split_at(ofs)
         } else {
             (s, "")
         }
-    };
-
-    if let Some(_) = "{}[]:,".find(c) {
-        stop(chars)
     } else if is_identifier(c) {
         while let Some((ofs, ch)) = chars.next() {
             if !is_identifier(ch) {
@@ -72,6 +80,7 @@ pub fn parse_(s: &str) -> Result<(Value, &str), ParseError> {
         let mut arr = Vec::new();
         loop {
             let (value, rest_) = parse_(rest)?;
+            rest = rest_;
 
             arr.push(value);
 
@@ -79,10 +88,9 @@ pub fn parse_(s: &str) -> Result<(Value, &str), ParseError> {
                 return Err(ParseError("Unexpected end of document".to_owned()));
             }
 
-            rest = rest_;
-
             let (next, rest_) = lex(rest);
             rest = rest_;
+
             if next == "]" {
                 break;
             } else if next == "," {
@@ -125,4 +133,14 @@ fn nested_array() {
     ]);
 
     assert_eq!(Ok(expected), parse("[true,[false,null]]"));
+}
+
+#[test]
+fn whitespace() {
+    let expected = Value::Array(vec![
+        Value::Boolean(true),
+        Value::Boolean(false)
+    ]);
+
+    assert_eq(Ok(expected), parse(" [ true , false ] "));
 }
