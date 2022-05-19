@@ -26,9 +26,7 @@ fn peek(chars: &CharIndices) -> Option<(usize, char)> {
 }
 
 fn eat_whitespace(chars: &mut CharIndices) -> Option<usize> {
-    let mut last_offset = 0;
     while let Some((ofs, ch)) = peek(chars) {
-        last_offset = ofs;
         if is_whitespace(ch) {
             chars.next();
         } else {
