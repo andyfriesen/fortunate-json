@@ -1,3 +1,4 @@
+
 use std::str::CharIndices;
 
 #[derive(Debug, PartialEq)]
@@ -19,32 +20,62 @@ fn is_identifier(c: char) -> bool {
     (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
+fn peek(chars: &CharIndices) -> Option<(usize, char)> {
+    let mut clone = chars.clone();
+    clone.next()
+}
+
+fn eat_whitespace(chars: &mut CharIndices) -> Option<usize> {
+    let mut last_offset = 0;
+    while let Some((ofs, ch)) = peek(chars) {
+        last_offset = ofs;
+        if is_whitespace(ch) {
+            chars.next();
+        } else {
+            return Some(ofs);
+        }
+    }
+
+    return None;
+}
+
+fn slice(s: &str, start: usize, end: Option<usize>) -> (&str, &str, &str) {
+    let (first, second) = s.split_at(start);
+    if let Some(e) = end {
+        let (third, fourth) = second.split_at(e - start);
+        (first, third, fourth)
+    } else {
+        (first, second, "")
+    }
+}
+
 fn lex(s: &str) -> (&str, &str) {
     if 0 == s.len() {
         return (s, s);
     }
 
     let mut chars = s.char_indices();
-    let (_, mut c) = chars.next().unwrap();
+    let start_offset = match eat_whitespace(&mut chars) {
+        Some(o) => o,
+        None => return ("", "")
+    };
 
-    while is_whitespace(c) {
-        if let Some((_, c_)) = chars.next() {
-            c = c_;
-        } else {
-            return ("", "");
-        }
-    }
+    let (char_offset, c) = chars.next().unwrap();
 
     if let Some(_) = "{}[]:,".find(c) {
-        if let Some((ofs, _)) = chars.next() {
-            s.split_at(ofs)
+        if let Some((end_offset, c)) = chars.next() {
+            let (f, ch, rest) = slice(s, start_offset, Some(end_offset));
+            println!("symbol '{}' rest='{}'", ch, rest);
+            (ch, rest)
         } else {
             (s, "")
         }
+        
     } else if is_identifier(c) {
         while let Some((ofs, ch)) = chars.next() {
             if !is_identifier(ch) {
-                return s.split_at(ofs);
+                let (a, b, c) = slice(s, start_offset, Some(ofs));
+                return (b, c);
             }
         }
         (s, "")
@@ -67,7 +98,6 @@ pub fn parse(s: &str) -> Result<Value, ParseError> {
 
 pub fn parse_(s: &str) -> Result<(Value, &str), ParseError> {
     let (next, mut rest) = lex(s);
-    println!("Next: {}", next);
     if next.len() == 0 {
         Err(ParseError("Unexpected end of document".to_owned()))
     } else if next == "null" {
@@ -142,5 +172,5 @@ fn whitespace() {
         Value::Boolean(false)
     ]);
 
-    assert_eq(Ok(expected), parse(" [ true , false ] "));
+    assert_eq!(Ok(expected), parse(" [ true , false ] "));
 }
