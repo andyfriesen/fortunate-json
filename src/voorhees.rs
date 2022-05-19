@@ -114,3 +114,15 @@ fn simple_array() {
     let expected = vec![Value::Boolean(true), Value::Boolean(false), Value::Null];
     assert_eq!(Ok(Value::Array(expected)), parse("[true,false,null]"));
 }
+
+#[test]
+fn nested_array() {
+    let expected = Value::Array(vec![
+        Value::Boolean(true),
+        Value::Array(
+            vec![Value::Boolean(false), Value::Null]
+        )
+    ]);
+
+    assert_eq!(Ok(expected), parse("[true,[false,null]]"));
+}
