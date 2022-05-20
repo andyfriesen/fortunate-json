@@ -98,6 +98,8 @@ impl<'a> Lexer<'a> {
             '{' => next_char(self),
             '}' => next_char(self),
             '"' => {
+                // TODO utf8 validation.
+                // TODO escape sequences
                 self.advance();
                 let res = self.take_while(|ch| ch != '"' as u8);
                 self.advance();
@@ -108,10 +110,7 @@ impl<'a> Lexer<'a> {
             }
             _ => {
                 return Err(ParseError(
-                    "Unexpected character '".to_owned()
-                        + std::str::from_utf8(&[byte]).unwrap()
-                        + "'",
-                ));
+                    format!("Unexpected character '{}'", byte as char));
             }
         };
 
