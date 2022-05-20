@@ -1,24 +1,30 @@
-use std::str::from_utf8;
-
 #[derive(Debug, PartialEq)]
 pub enum Value {
     Null,
     Boolean(bool),
     // Number(f32)
+    String(String),
     Array(Vec<Value>),
 }
 
 #[derive(Debug, PartialEq)]
 pub struct ParseError(String);
 
+#[derive(Debug)]
+enum Token<'a> {
+    Identifier(&'a [u8]),
+    Symbol(u8),
+    String(&'a [u8]),
+}
+
 struct Lexer<'a> {
     s: &'a [u8],
-    pos: usize
+    pos: usize,
 }
 
 impl<'a> Lexer<'a> {
     fn new(s: &[u8]) -> Lexer {
-        Lexer{s: s, pos: 0}
+        Lexer { s: s, pos: 0 }
     }
 
     fn eof(&self) -> bool {
@@ -39,7 +45,10 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn take_while<T>(&mut self, pred: T) -> &'a [u8] where T : Fn(u8) -> bool {
+    fn take_while<T>(&mut self, pred: T) -> &'a [u8]
+    where
+        T: Fn(u8) -> bool,
+    {
         let start_pos = self.pos;
         while let Some(ch) = self.peek_byte() {
             if pred(ch) {
@@ -53,7 +62,9 @@ impl<'a> Lexer<'a> {
     }
 
     fn skip_whitespace(&mut self) {
-        self.take_while(|ch| ch == ' ' as u8 || ch == '\t' as u8  || ch == '\r' as u8  || ch == '\n' as u8);
+        self.take_while(|ch| {
+            ch == ' ' as u8 || ch == '\t' as u8 || ch == '\r' as u8 || ch == '\n' as u8
+        });
     }
 
     fn is_identifier_start(b: u8) -> bool {
@@ -64,7 +75,7 @@ impl<'a> Lexer<'a> {
         Self::is_identifier_start(b) || (b >= '0' as u8 && b <= '9' as u8)
     }
 
-    fn token(&mut self) -> Result<&'a [u8], ParseError> {
+    fn token(&mut self) -> Result<Token, ParseError> {
         self.skip_whitespace();
 
         if self.eof() {
@@ -74,7 +85,7 @@ impl<'a> Lexer<'a> {
         let next_char = |lexer: &mut Self| {
             let start_pos = lexer.pos;
             lexer.advance();
-            &lexer.s[start_pos..lexer.pos]
+            Token::Symbol(lexer.s[start_pos])
         };
 
         let byte = self.peek_byte().unwrap();
@@ -86,16 +97,26 @@ impl<'a> Lexer<'a> {
             ':' => next_char(self),
             '{' => next_char(self),
             '}' => next_char(self),
+            '"' => {
+                self.advance();
+                let res = self.take_while(|ch| ch != '"' as u8);
+                self.advance();
+                Token::String(res)
+            }
             _ if Self::is_identifier_start(byte) => {
-                self.take_while(Self::is_identifier_char)
-            },
+                Token::Identifier(self.take_while(Self::is_identifier_char))
+            }
             _ => {
-                return Err(ParseError("Unexpected character '".to_owned() + std::str::from_utf8(&[byte]).unwrap() + "'"));
+                return Err(ParseError(
+                    "Unexpected character '".to_owned()
+                        + std::str::from_utf8(&[byte]).unwrap()
+                        + "'",
+                ));
             }
         };
 
         self.skip_whitespace();
-        
+
         Ok(result)
     }
 
@@ -111,9 +132,10 @@ pub fn parse(s: &str) -> Result<Value, ParseError> {
     lexer.skip_whitespace();
 
     if !lexer.eof() {
-        Err(ParseError(
-            "Extra goop at the end of the file: ".to_owned() + from_utf8(lexer.rest()).unwrap(),
-        ))
+        Err(ParseError(format!(
+            "Extra goop at the end of the file: {:?}",
+            lexer.rest()
+        )))
     } else {
         Ok(v)
     }
@@ -122,46 +144,40 @@ pub fn parse(s: &str) -> Result<Value, ParseError> {
 const NULL_TOKEN: &'static [u8] = b"null";
 const TRUE_TOKEN: &'static [u8] = b"true";
 const FALSE_TOKEN: &'static [u8] = b"false";
-const OPEN_BRACKET_TOKEN: &'static [u8] = b"[";
-const CLOSE_BRACKET_TOKEN: &'static [u8] = b"]";
-const OPEN_BRACE_TOKEN: &'static [u8] = b"{";
-const CLOSE_BRACE_TOKEN: &'static [u8] = b"}";
-const COLON_TOKEN: &'static [u8] = b":";
-const COMMA_TOKEN: &'static [u8] = b",";
 
 fn parse_(lexer: &mut Lexer) -> Result<Value, ParseError> {
     let token = lexer.token()?;
-    println!("token '{}'", from_utf8(token).unwrap());
+    dbg!("token '{:?}'", &token);
 
-    if token.len() == 0 {
-        Err(ParseError("Unexpected end of document".to_owned()))
-    } else if token == NULL_TOKEN {
-        Ok(Value::Null)
-    } else if token == TRUE_TOKEN {
-        Ok(Value::Boolean(true))
-    } else if token == FALSE_TOKEN {
-        Ok(Value::Boolean(false))
-    } else if token == OPEN_BRACKET_TOKEN {
-        let mut arr = Vec::new();
-        loop {
-            let val = parse_(lexer)?;
-            arr.push(val);
+    match token {
+        Token::Identifier(i) if i == NULL_TOKEN => Ok(Value::Null),
+        Token::Identifier(i) if i == TRUE_TOKEN => Ok(Value::Boolean(true)),
+        Token::Identifier(i) if i == FALSE_TOKEN => Ok(Value::Boolean(false)),
+        Token::Symbol(t) if t == '[' as u8 => {
+            let mut arr = Vec::new();
+            loop {
+                let val = parse_(lexer)?;
+                arr.push(val);
 
-            let next = lexer.token()?;
-            if next == CLOSE_BRACKET_TOKEN{
-                break;
-            } else if next == COMMA_TOKEN {
-                continue;
-            } else if next.len() == 0 {
-                return Err(ParseError("Unexpected end of document".to_owned()));
-            } else {
-                return Err(ParseError("Expected ',' or ']' but got '".to_owned() + from_utf8(next).unwrap() + "'"));
+                let next = lexer.token()?;
+                match next {
+                    Token::Symbol(t) if t == ']' as u8 => break,
+                    Token::Symbol(t) if t == ',' as u8 => continue,
+                    _ => {
+                        return Err(ParseError(format!(
+                            "Expected ',' or ']' but got '{:?}'",
+                            next
+                        )));
+                    }
+                }
             }
-        }
 
-        Ok(Value::Array(arr))
-    } else {
-        Err(ParseError("Unknown token '".to_owned() + from_utf8(token).unwrap() + "'"))
+            Ok(Value::Array(arr))
+        },
+        Token::String(s) => {
+            Ok(Value::String(std::str::from_utf8(s).unwrap().to_owned()))
+        },
+        t => Err(ParseError(format!("Unknown token '{:?}'", t))),
     }
 }
 
@@ -193,4 +209,11 @@ fn whitespace() {
     let expected = Value::Array(vec![Value::Boolean(true), Value::Boolean(false)]);
 
     assert_eq!(Ok(expected), parse(" [ true , false ] "));
+}
+
+#[test]
+fn string() {
+    let expected = Value::String("Hello World!".to_owned());
+
+    assert_eq!(Ok(expected), parse("\"Hello World!\""));
 }
