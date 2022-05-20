@@ -39,25 +39,6 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn take_byte(&mut self) -> Option<u8> {
-        if self.eof() {
-            None
-        } else {
-            let res = self.s[self.pos];
-            self.advance();
-            Some(res)
-        }
-    }
-
-    fn take<T>(&mut self, pred: T) -> Option<u8> where T : FnOnce(u8) -> bool {
-        if let Some(ch) = self.peek_byte() {
-            if pred(ch) {
-                return Some(ch)
-            }
-        }
-        return None;
-    }
-
     fn take_while<T>(&mut self, pred: T) -> &'a [u8] where T : Fn(u8) -> bool {
         let start_pos = self.pos;
         while let Some(ch) = self.peek_byte() {
@@ -83,11 +64,11 @@ impl<'a> Lexer<'a> {
         Self::is_identifier_start(b) || (b >= '0' as u8 && b <= '9' as u8)
     }
 
-    fn token(&mut self) -> &'a [u8] {
+    fn token(&mut self) -> Result<&'a [u8], ParseError> {
         self.skip_whitespace();
 
         if self.eof() {
-            return &[];
+            return Err(ParseError("Unexpected end of file".to_owned()));
         }
 
         let next_char = |lexer: &mut Self| {
@@ -109,13 +90,13 @@ impl<'a> Lexer<'a> {
                 self.take_while(Self::is_identifier_char)
             },
             _ => {
-                next_char(self)
+                return Err(ParseError("Unexpected character '".to_owned() + std::str::from_utf8(&[byte]).unwrap() + "'"));
             }
         };
 
         self.skip_whitespace();
         
-        result
+        Ok(result)
     }
 
     fn rest(&self) -> &'a [u8] {
@@ -149,7 +130,7 @@ const COLON_TOKEN: &'static [u8] = b":";
 const COMMA_TOKEN: &'static [u8] = b",";
 
 fn parse_(lexer: &mut Lexer) -> Result<Value, ParseError> {
-    let token = lexer.token();
+    let token = lexer.token()?;
     println!("token '{}'", from_utf8(token).unwrap());
 
     if token.len() == 0 {
@@ -166,7 +147,7 @@ fn parse_(lexer: &mut Lexer) -> Result<Value, ParseError> {
             let val = parse_(lexer)?;
             arr.push(val);
 
-            let next = lexer.token();
+            let next = lexer.token()?;
             if next == CLOSE_BRACKET_TOKEN{
                 break;
             } else if next == COMMA_TOKEN {
