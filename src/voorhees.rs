@@ -13,7 +13,7 @@ pub enum Value {
 #[derive(Debug, PartialEq)]
 pub struct ParseError(String);
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum Token<'a> {
     Identifier(&'a [u8]),
     OpenBracket,
@@ -291,6 +291,40 @@ fn parse_(lexer: &mut Lexer) -> Result<Value, ParseError> {
 
             Ok(Value::Array(arr))
         }
+        Token::OpenBrace => {
+            let mut obj = HashMap::new();
+
+            loop {
+                let key = match parse_(lexer)? {
+                    Value::String(s) => s,
+                    other => {
+                        return Err(ParseError(format!(
+                            "Object keys must be strings.  Got {:?}",
+                            other
+                        )))
+                    }
+                };
+
+                let colon = lexer.token()?;
+                if Token::Colon != colon {
+                    return Err(ParseError(format!("Expected colon but got '{:?}'", colon)));
+                }
+
+                let val = parse_(lexer)?;
+
+                obj.insert(key, val);
+
+                let comma_or_brace = lexer.token()?;
+                if comma_or_brace == Token::CloseBrace {
+                    break;
+                } else if comma_or_brace != Token::Comma {
+                    return Err(ParseError(format!("Expected comma or brace but got '{:?}'", comma_or_brace)));
+                }
+            }
+
+            Ok(Value::Object(obj))
+        }
+
         t => Err(ParseError(format!("Unknown token '{:?}'", t))),
     }
 }
@@ -344,4 +378,14 @@ fn string_with_newline() {
     let expected = Value::String("Hello\nWorld".to_owned());
 
     assert_eq!(Ok(expected), parse("\"Hello\\nWorld\""));
+}
+
+#[test]
+fn object() {
+    let expected = Value::Object(HashMap::from([
+        ("foo".to_owned(), Value::String("bar".to_owned())),
+        ("baz".to_owned(), Value::Boolean(true))
+    ]));
+
+    assert_eq!(Ok(expected), parse("{\"foo\": \"bar\", \"baz\" : true}"))
 }
