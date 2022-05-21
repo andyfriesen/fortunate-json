@@ -1,3 +1,5 @@
+use std::collections::hash_map::HashMap;
+
 #[derive(Debug, PartialEq)]
 pub enum Value {
     Null,
@@ -5,6 +7,7 @@ pub enum Value {
     // Number(f32)
     String(String),
     Array(Vec<Value>),
+    Object(HashMap<String, Value>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -13,7 +16,13 @@ pub struct ParseError(String);
 #[derive(Debug)]
 enum Token<'a> {
     Identifier(&'a [u8]),
-    Symbol(u8),
+    OpenBracket,
+    CloseBracket,
+    OpenBrace,
+    CloseBrace,
+    Colon,
+    Comma,
+    // Symbol(u8),
     String(String),
 }
 
@@ -82,21 +91,33 @@ impl<'a> Lexer<'a> {
             return Err(ParseError("Unexpected end of file".to_owned()));
         }
 
-        let next_char = |lexer: &mut Self| {
-            let start_pos = lexer.pos;
-            lexer.advance();
-            Token::Symbol(lexer.s[start_pos])
-        };
-
         let byte = self.peek_byte().unwrap();
 
         let result = match byte as char {
-            '[' => next_char(self),
-            ']' => next_char(self),
-            ',' => next_char(self),
-            ':' => next_char(self),
-            '{' => next_char(self),
-            '}' => next_char(self),
+            '[' => {
+                self.advance();
+                Token::OpenBracket
+            }
+            ']' => {
+                self.advance();
+                Token::CloseBracket
+            }
+            ',' => {
+                self.advance();
+                Token::Comma
+            }
+            ':' => {
+                self.advance();
+                Token::Colon
+            }
+            '{' => {
+                self.advance();
+                Token::OpenBrace
+            }
+            '}' => {
+                self.advance();
+                Token::CloseBrace
+            }
             '"' => {
                 // std::str::from_utf8(self.s)
 
@@ -139,7 +160,7 @@ impl<'a> Lexer<'a> {
                 let res = &self.s[start_pos..end_pos];
 
                 self.advance();
-                Token::String(Self::parse_escape_sequences(res))
+                Token::String(Self::parse_escape_sequences(res)?)
             }
             _ if Self::is_identifier_start(byte) => {
                 Token::Identifier(self.take_while(Self::is_identifier_char))
@@ -157,7 +178,27 @@ impl<'a> Lexer<'a> {
         Ok(result)
     }
 
-    fn parse_escape_sequences(s: &[u8]) -> String {
+    fn parse_hex_digit(d: char) -> Result<usize, ParseError> {
+        const DIGITS: &str = "01234567890ABCDEF";
+        if let Some(i) = DIGITS.find(d.to_ascii_uppercase()) {
+            Ok(i)
+        } else {
+            Err(ParseError(format!(
+                "Bad hex digit '{}' in unicode escape",
+                d
+            )))
+        }
+    }
+
+    fn parse_hex(d1: char, d2: char, d3: char, d4: char) -> Result<u32, ParseError> {
+        let a1 = Self::parse_hex_digit(d1)?;
+        let a2 = Self::parse_hex_digit(d2)?;
+        let a3 = Self::parse_hex_digit(d3)?;
+        let a4 = Self::parse_hex_digit(d4)?;
+        Ok((a1 << 24 | a2 << 16 | a3 << 8 | a4) as u32)
+    }
+
+    fn parse_escape_sequences(s: &[u8]) -> Result<String, ParseError> {
         let mut res = String::new();
         res.reserve_exact(s.len());
 
@@ -177,9 +218,14 @@ impl<'a> Lexer<'a> {
                     'n' => '\n',
                     'r' => '\r',
                     't' => '\t',
-                    // 'u' => {
-
-                    // },
+                    'u' => {
+                        // FIXME: Not safe.
+                        let d1 = chars.next().unwrap();
+                        let d2 = chars.next().unwrap();
+                        let d3 = chars.next().unwrap();
+                        let d4 = chars.next().unwrap();
+                        char::from_u32(Self::parse_hex(d1, d2, d3, d4)?).unwrap()
+                    }
                     c => c,
                 });
             } else {
@@ -187,7 +233,7 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        res
+        Ok(res)
     }
 
     fn rest(&self) -> &'a [u8] {
@@ -223,7 +269,8 @@ fn parse_(lexer: &mut Lexer) -> Result<Value, ParseError> {
         Token::Identifier(i) if i == NULL_TOKEN => Ok(Value::Null),
         Token::Identifier(i) if i == TRUE_TOKEN => Ok(Value::Boolean(true)),
         Token::Identifier(i) if i == FALSE_TOKEN => Ok(Value::Boolean(false)),
-        Token::Symbol(t) if t == '[' as u8 => {
+        Token::String(s) => Ok(Value::String(s)),
+        Token::OpenBracket => {
             let mut arr = Vec::new();
             loop {
                 let val = parse_(lexer)?;
@@ -231,8 +278,8 @@ fn parse_(lexer: &mut Lexer) -> Result<Value, ParseError> {
 
                 let next = lexer.token()?;
                 match next {
-                    Token::Symbol(t) if t == ']' as u8 => break,
-                    Token::Symbol(t) if t == ',' as u8 => continue,
+                    Token::CloseBracket => break,
+                    Token::Comma => continue,
                     _ => {
                         return Err(ParseError(format!(
                             "Expected ',' or ']' but got '{:?}'",
@@ -244,7 +291,6 @@ fn parse_(lexer: &mut Lexer) -> Result<Value, ParseError> {
 
             Ok(Value::Array(arr))
         }
-        Token::String(s) => Ok(Value::String(s)),
         t => Err(ParseError(format!("Unknown token '{:?}'", t))),
     }
 }
