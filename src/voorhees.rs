@@ -14,7 +14,7 @@ pub struct ParseError(String);
 enum Token<'a> {
     Identifier(&'a [u8]),
     Symbol(u8),
-    String(&'a [u8]),
+    String(String),
 }
 
 struct Lexer<'a> {
@@ -98,10 +98,47 @@ impl<'a> Lexer<'a> {
             '{' => next_char(self),
             '}' => next_char(self),
             '"' => {
-                // TODO utf8 validation.
-                // TODO escape sequences
+                // std::str::from_utf8(self.s)
+
+                // TODO: Scan for non-escaped end quote.
+                // Parse utf8.
+                // Process escape sequences in-place?
+
+                // Alternate: Can we parse utf8 into a &str without a copy?
+                // Then walk chars to parse escape sequences
+
+                // First, just find the extent of the string literal
                 self.advance();
-                let res = self.take_while(|ch| ch != '"' as u8);
+                let start_pos = self.pos;
+                loop {
+                    match self.peek_byte() {
+                        None => {
+                            return Err(ParseError(
+                                "Unexpected end of file while parsing string literal".to_owned(),
+                            ))
+                        }
+                        Some(b) => match b as char {
+                            '\n' => {
+                                return Err(ParseError(
+                                    "Unexpected newline while parsing string literal".to_owned(),
+                                ))
+                            }
+                            '\\' => {
+                                self.advance();
+                                if let None = self.peek_byte() {
+                                    return Err(ParseError("Unexpected end of file while parsing string literal escape sequence".to_owned()));
+                                }
+                            }
+                            '"' => break,
+                            _ => self.advance(),
+                        },
+                    }
+                }
+                let end_pos = self.pos;
+
+                let res = std::str::from_utf8(&self.s[start_pos..end_pos])
+                    .unwrap()
+                    .to_owned();
                 self.advance();
                 Token::String(res)
             }
@@ -109,8 +146,10 @@ impl<'a> Lexer<'a> {
                 Token::Identifier(self.take_while(Self::is_identifier_char))
             }
             _ => {
-                return Err(ParseError(
-                    format!("Unexpected character '{}'", byte as char));
+                return Err(ParseError(format!(
+                    "Unexpected character '{}'",
+                    byte as char
+                )));
             }
         };
 
@@ -172,10 +211,8 @@ fn parse_(lexer: &mut Lexer) -> Result<Value, ParseError> {
             }
 
             Ok(Value::Array(arr))
-        },
-        Token::String(s) => {
-            Ok(Value::String(std::str::from_utf8(s).unwrap().to_owned()))
-        },
+        }
+        Token::String(s) => Ok(Value::String(s)),
         t => Err(ParseError(format!("Unknown token '{:?}'", t))),
     }
 }
