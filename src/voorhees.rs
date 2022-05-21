@@ -4,7 +4,7 @@ use std::collections::hash_map::HashMap;
 pub enum Value {
     Null,
     Boolean(bool),
-    // Number(f32)
+    Number(f32),
     String(String),
     Array(Vec<Value>),
     Object(HashMap<String, Value>),
@@ -24,6 +24,7 @@ enum Token<'a> {
     Comma,
     // Symbol(u8),
     String(String),
+    Number(f32),
 }
 
 struct Lexer<'a> {
@@ -81,7 +82,11 @@ impl<'a> Lexer<'a> {
     }
 
     fn is_identifier_char(b: u8) -> bool {
-        Self::is_identifier_start(b) || (b >= '0' as u8 && b <= '9' as u8)
+        Self::is_identifier_start(b) || Self::is_digit(b)
+    }
+
+    fn is_digit(b: u8) -> bool {
+        b >= '0' as u8 && b <= '9' as u8
     }
 
     fn token(&mut self) -> Result<Token, ParseError> {
@@ -118,6 +123,9 @@ impl<'a> Lexer<'a> {
                 self.advance();
                 Token::CloseBrace
             }
+            '-' => Token::Number(self.lex_number()?),
+            d if d.is_digit(10) => Token::Number(self.lex_number()?),
+
             '"' => {
                 // std::str::from_utf8(self.s)
 
@@ -176,6 +184,34 @@ impl<'a> Lexer<'a> {
         self.skip_whitespace();
 
         Ok(result)
+    }
+
+    fn lex_number(&mut self) -> Result<f32, ParseError> {
+        let negative = if self.peek_byte() == Some('-' as u8) {
+            self.advance();
+            true
+        } else {
+            false
+        };
+
+        if self.eof() {
+            return Err(ParseError("Unexpected EOF while parsing number".to_owned()));
+        }
+
+        let start_offset = self.pos;
+        // let Some(next) = self.peek_byte();
+
+        // if next == '0' as u8 ... floating point
+
+        self.take_while(&Self::is_digit);
+        let end_effset = self.pos;
+
+        let res = std::str::from_utf8(&self.s[start_offset..end_effset])
+            .unwrap()
+            .parse::<usize>()
+            .unwrap();
+
+        Ok(if negative { -(res as f32) } else { res as f32 })
     }
 
     fn parse_hex_digit(d: char) -> Result<usize, ParseError> {
@@ -270,6 +306,7 @@ fn parse_(lexer: &mut Lexer) -> Result<Value, ParseError> {
         Token::Identifier(i) if i == TRUE_TOKEN => Ok(Value::Boolean(true)),
         Token::Identifier(i) if i == FALSE_TOKEN => Ok(Value::Boolean(false)),
         Token::String(s) => Ok(Value::String(s)),
+        Token::Number(n) => Ok(Value::Number(n)),
         Token::OpenBracket => {
             let mut arr = Vec::new();
             loop {
@@ -318,7 +355,10 @@ fn parse_(lexer: &mut Lexer) -> Result<Value, ParseError> {
                 if comma_or_brace == Token::CloseBrace {
                     break;
                 } else if comma_or_brace != Token::Comma {
-                    return Err(ParseError(format!("Expected comma or brace but got '{:?}'", comma_or_brace)));
+                    return Err(ParseError(format!(
+                        "Expected comma or brace but got '{:?}'",
+                        comma_or_brace
+                    )));
                 }
             }
 
@@ -328,6 +368,8 @@ fn parse_(lexer: &mut Lexer) -> Result<Value, ParseError> {
         t => Err(ParseError(format!("Unknown token '{:?}'", t))),
     }
 }
+
+// TODO: Like a billion tests around error conditions.
 
 #[test]
 fn prims() {
@@ -384,8 +426,23 @@ fn string_with_newline() {
 fn object() {
     let expected = Value::Object(HashMap::from([
         ("foo".to_owned(), Value::String("bar".to_owned())),
-        ("baz".to_owned(), Value::Boolean(true))
+        ("baz".to_owned(), Value::Boolean(true)),
     ]));
 
     assert_eq!(Ok(expected), parse("{\"foo\": \"bar\", \"baz\" : true}"))
+}
+
+#[test]
+fn integers() {
+    let expected = Value::Array(vec![
+        Value::Number(0.0),
+        Value::Number(2.0),
+        Value::Number(4.0),
+        Value::Number(8.0),
+        Value::Number(128.0),
+        Value::Number(65535.0),
+        Value::Number(-131085.0),
+    ]);
+
+    assert_eq!(Ok(expected), parse("[0, 2, 4 , 8, 128 \t ,65535, -131085]"));
 }
