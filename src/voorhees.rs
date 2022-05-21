@@ -136,11 +136,10 @@ impl<'a> Lexer<'a> {
                 }
                 let end_pos = self.pos;
 
-                let res = std::str::from_utf8(&self.s[start_pos..end_pos])
-                    .unwrap()
-                    .to_owned();
+                let res = &self.s[start_pos..end_pos];
+
                 self.advance();
-                Token::String(res)
+                Token::String(Self::parse_escape_sequences(res))
             }
             _ if Self::is_identifier_start(byte) => {
                 Token::Identifier(self.take_while(Self::is_identifier_char))
@@ -156,6 +155,39 @@ impl<'a> Lexer<'a> {
         self.skip_whitespace();
 
         Ok(result)
+    }
+
+    fn parse_escape_sequences(s: &[u8]) -> String {
+        let mut res = String::new();
+        res.reserve_exact(s.len());
+
+        let st = std::str::from_utf8(s).unwrap();
+
+        let mut chars = st.chars();
+
+        while let Some(ch) = chars.next() {
+            if ch == '\\' {
+                let n = chars.next().unwrap(); // Should be ok.  Lexer should handle this.
+                res.push(match n {
+                    '"' => '"',
+                    '\\' => '\\',
+                    '/' => '/',
+                    'b' => '\x08',
+                    'f' => '\x0c',
+                    'n' => '\n',
+                    'r' => '\r',
+                    't' => '\t',
+                    // 'u' => {
+
+                    // },
+                    c => c,
+                });
+            } else {
+                res.push(ch);
+            }
+        }
+
+        res
     }
 
     fn rest(&self) -> &'a [u8] {
@@ -252,4 +284,18 @@ fn string() {
     let expected = Value::String("Hello World!".to_owned());
 
     assert_eq!(Ok(expected), parse("\"Hello World!\""));
+}
+
+#[test]
+fn japanese() {
+    let expected = Value::String("こんにちは".to_owned());
+
+    assert_eq!(Ok(expected), parse("\"こんにちは\""));
+}
+
+#[test]
+fn string_with_newline() {
+    let expected = Value::String("Hello\nWorld".to_owned());
+
+    assert_eq!(Ok(expected), parse("\"Hello\\nWorld\""));
 }
