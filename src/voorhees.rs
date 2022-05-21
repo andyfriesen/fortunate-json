@@ -15,14 +15,13 @@ pub struct ParseError(String);
 
 #[derive(Debug, PartialEq)]
 enum Token<'a> {
-    Identifier(&'a [u8]),
     OpenBracket,
     CloseBracket,
     OpenBrace,
     CloseBrace,
     Colon,
     Comma,
-    // Symbol(u8),
+    Identifier(&'a [u8]),
     String(String),
     Number(f32),
 }
