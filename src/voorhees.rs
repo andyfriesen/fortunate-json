@@ -203,11 +203,18 @@ impl<'a> Lexer<'a> {
         // if next == '0' as u8 ... floating point
 
         self.take_while(&Self::is_digit);
+
+        if self.peek_byte() == Some('.' as u8) {
+            self.advance();
+
+            self.take_while(&Self::is_digit);
+        }
+
         let end_effset = self.pos;
 
         let res = std::str::from_utf8(&self.s[start_offset..end_effset])
             .unwrap()
-            .parse::<usize>()
+            .parse::<f32>()
             .unwrap();
 
         Ok(if negative { -(res as f32) } else { res as f32 })
@@ -444,4 +451,11 @@ fn integers() {
     ]);
 
     assert_eq!(Ok(expected), parse("[0, 2, 4 , 8, 128 \t ,65535, -131085]"));
+}
+
+#[test]
+fn float() {
+    let expected = Value::Number(3.141);
+
+    assert_eq!(Ok(expected), parse("3.141"));
 }
