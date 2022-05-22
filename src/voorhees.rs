@@ -1,4 +1,6 @@
 use std::collections::hash_map::HashMap;
+use std::str::FromStr;
+use std::hash::Hash;
 
 #[derive(Debug, PartialEq)]
 pub enum Value {
@@ -8,6 +10,40 @@ pub enum Value {
     String(String),
     Array(Vec<Value>),
     Object(HashMap<String, Value>),
+}
+
+impl Value {
+    fn as_string(&self) -> Result<&String, DecodeError> {
+        if let Value::String(s) = self {
+            Ok(s)
+        } else {
+            Err(DecodeError{})
+        }
+    }
+
+    fn as_float(&self) -> Result<f32, DecodeError> {
+        if let Value::Number(n) = self {
+            Ok(*n)
+        } else {
+            Err(DecodeError{})
+        }
+    }
+
+    fn as_array(&self) -> Result<&Vec<Value>, DecodeError> {
+        if let Value::Array(a) = self {
+            Ok(a)
+        } else {
+            Err(DecodeError{})
+        }
+    }
+
+    fn as_object(&self) -> Result<&HashMap<String, Value>, DecodeError> {
+        if let Value::Object(hm) = self {
+            Ok(hm)
+        } else {
+            Err(DecodeError{})
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -373,6 +409,67 @@ fn parse_(lexer: &mut Lexer) -> Result<Value, ParseError> {
         }
 
         t => Err(ParseError(format!("Unknown token '{:?}'", t))),
+    }
+}
+
+struct DecodeError;
+
+trait FromJSON {
+    // fn from_json(v: &Value) -> Result<Self, DecodeError>;
+    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError>;
+}
+
+impl FromJSON for String {
+    fn from_json(v: &Value, res: &mut String) -> Result<(), DecodeError> {
+        let s = v.as_string()?;
+        res.clone_from(s);
+        Ok(())
+    }
+}
+
+impl FromJSON for f32 {
+    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
+        let n = v.as_float()?;
+        *res = n;
+        Ok(())
+    }
+}
+
+impl<T> FromJSON for Vec<T> where T : FromJSON + Default {
+    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
+        let a = v.as_array()?;
+        res.clear();
+        res.reserve_exact(a.len());
+
+        for elem in a {
+            let mut e = Default::default();
+            FromJSON::from_json(elem, &mut e)?;
+            res.push(e);
+        }
+
+        Ok(())
+    }
+}
+
+impl<K, V> FromJSON for HashMap<K, V> where K : FromJSON + FromStr + Eq + Hash, V : FromJSON + Default {
+    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
+        let hm = v.as_object()?;
+
+        res.clear();
+
+        for (k, v) in hm {
+            let key = match FromStr::from_str(k.as_str()) {
+                Ok(k) => k,
+                Err(_) => return Err(DecodeError{}) // FIXME
+            };
+
+            let mut value = Default::default();
+            FromJSON::from_json(v, &mut value)?;
+
+            res.insert(key, value);
+        }
+
+        Ok(())
     }
 }
 
