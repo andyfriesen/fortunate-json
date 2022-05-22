@@ -71,13 +71,11 @@ impl<'a> Lexer<'a> {
     }
 
     fn skip_whitespace(&mut self) {
-        self.take_while(|ch| {
-            ch == ' ' as u8 || ch == '\t' as u8 || ch == '\r' as u8 || ch == '\n' as u8
-        });
+        self.take_while(|ch| ch == b' ' || ch == b'\t' || ch == b'\r' || ch == b'\n');
     }
 
     fn is_identifier_start(b: u8) -> bool {
-        (b >= 'a' as u8 && b <= 'z' as u8) || (b >= 'A' as u8 && b <= 'Z' as u8) || b == '_' as u8
+        (b >= b'a' && b <= b'z') || (b >= b'A' && b <= b'Z') || b == b'_'
     }
 
     fn is_identifier_char(b: u8) -> bool {
@@ -85,7 +83,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn is_digit(b: u8) -> bool {
-        b >= '0' as u8 && b <= '9' as u8
+        b >= b'0' && b <= b'9'
     }
 
     fn token(&mut self) -> Result<Token, ParseError> {
@@ -126,15 +124,6 @@ impl<'a> Lexer<'a> {
             d if d.is_digit(10) => Token::Number(self.lex_number()?),
 
             '"' => {
-                // std::str::from_utf8(self.s)
-
-                // TODO: Scan for non-escaped end quote.
-                // Parse utf8.
-                // Process escape sequences in-place?
-
-                // Alternate: Can we parse utf8 into a &str without a copy?
-                // Then walk chars to parse escape sequences
-
                 // First, just find the extent of the string literal
                 self.advance();
                 let start_pos = self.pos;
@@ -167,7 +156,7 @@ impl<'a> Lexer<'a> {
                 let res = &self.s[start_pos..end_pos];
 
                 self.advance();
-                Token::String(Self::parse_escape_sequences(res)?)
+                Token::String(Self::parse_string(res)?)
             }
             _ if Self::is_identifier_start(byte) => {
                 Token::Identifier(self.take_while(Self::is_identifier_char))
@@ -186,7 +175,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_number(&mut self) -> Result<f32, ParseError> {
-        let negative = if self.peek_byte() == Some('-' as u8) {
+        let negative = if self.peek_byte() == Some(b'-') {
             self.advance();
             true
         } else {
@@ -198,16 +187,28 @@ impl<'a> Lexer<'a> {
         }
 
         let start_offset = self.pos;
-        // let Some(next) = self.peek_byte();
 
-        // if next == '0' as u8 ... floating point
+        // TODO: leading zeroes are not ok.  Only one leading zero before a decimal is allowed.
 
         self.take_while(&Self::is_digit);
 
-        if self.peek_byte() == Some('.' as u8) {
+        if self.peek_byte() == Some(b'.') {
             self.advance();
 
             self.take_while(&Self::is_digit);
+        }
+
+        if let Some(ch) = self.peek_byte() {
+            if ch == b'e' || ch == b'E' {
+                self.advance();
+
+                let maybe_sign = self.peek_byte();
+                if maybe_sign == Some(b'-') || maybe_sign == Some(b'+') {
+                    self.advance();
+                }
+
+                self.take_while(&Self::is_digit);
+            }
         }
 
         let end_effset = self.pos;
@@ -240,7 +241,7 @@ impl<'a> Lexer<'a> {
         Ok((a1 << 24 | a2 << 16 | a3 << 8 | a4) as u32)
     }
 
-    fn parse_escape_sequences(s: &[u8]) -> Result<String, ParseError> {
+    fn parse_string(s: &[u8]) -> Result<String, ParseError> {
         let mut res = String::new();
         res.reserve_exact(s.len());
 
@@ -458,4 +459,11 @@ fn float() {
     let expected = Value::Number(3.141);
 
     assert_eq!(Ok(expected), parse("3.141"));
+}
+
+#[test]
+fn exponential_notation() {
+    let expected = Value::Array(vec![Value::Number(1000.0), Value::Number(0.00055)]);
+
+    assert_eq!(Ok(expected), parse("[1e3, 5.5e-4]"));
 }
