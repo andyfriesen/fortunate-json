@@ -46,6 +46,17 @@ impl Value {
     }
 }
 
+pub fn extract_field<T>(o: &HashMap<String, Value>, key: &str, res: &mut T) -> Result<(), DecodeError> where T : FromJSON {
+    let v = match o.get(key) {
+        None => return Err(DecodeError{}),
+        Some(a) => a
+    };
+
+    T::from_json(v, res)?;
+
+    Ok(())
+}
+
 #[derive(Debug, PartialEq)]
 pub struct ParseError(String);
 
@@ -412,6 +423,7 @@ fn parse_(lexer: &mut Lexer) -> Result<Value, ParseError> {
     }
 }
 
+#[derive(Debug)]
 pub struct DecodeError;
 
 pub trait FromJSON {
@@ -570,4 +582,34 @@ fn exponential_notation() {
     let expected = Value::Array(vec![Value::Number(1000.0), Value::Number(0.00055)]);
 
     assert_eq!(Ok(expected), parse("[1e3, 5.5e-4]"));
+}
+
+#[test]
+fn unpack_struct() {
+    #[derive(Debug, PartialEq)]
+    struct Point {
+        x: f32,
+        y: f32
+    }
+
+    impl FromJSON for Point {
+        fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
+            let o = v.as_object()?;
+
+            extract_field(o, "x", &mut res.x)?;
+            extract_field(o, "y", &mut res.y)?;
+
+            Ok(())
+        }
+    }
+
+    let mut p = Point{x: 0.0, y: 0.0};
+
+    let json = "{\"x\": 3.14, \"y\": 1.161}";
+
+    let parsed = parse(json).unwrap();
+
+    FromJSON::from_json(&parsed, &mut p).unwrap();
+
+    assert_eq!(p, Point{x: 3.14, y:1.161});
 }
