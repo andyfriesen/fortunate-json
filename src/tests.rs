@@ -1,4 +1,6 @@
-use crate::fortunate_json::{extract_field, parse, DecodeError, FromJSON, Value};
+use crate::fortunate_json::{
+    decode, extract_field, parse, DecodeError, FromJSON, JSONError, Value,
+};
 use std::collections::hash_map::HashMap;
 
 // TODO: Like a billion tests around error conditions.
@@ -38,6 +40,16 @@ fn string() {
     let expected = Value::String("Hello World!".to_owned());
 
     assert_eq!(Ok(expected), parse("\"Hello World!\""));
+}
+
+#[test]
+fn busted_unicode_escape() {
+    assert_eq!(
+        Err(JSONError::ParseError(
+            "Unexpected EOF when parsing unicode escape in string literal".to_owned()
+        )),
+        decode::<String>("\"\\u00\"")
+    );
 }
 
 #[test]
@@ -93,25 +105,25 @@ fn exponential_notation() {
     assert_eq!(Ok(expected), parse("[1e3, 5.5e-4]"));
 }
 
+#[derive(Debug, PartialEq, Default)]
+struct Point {
+    x: f32,
+    y: f32,
+}
+
+impl FromJSON for Point {
+    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
+        let o = v.as_object()?;
+
+        extract_field(o, "x", &mut res.x)?;
+        extract_field(o, "y", &mut res.y)?;
+
+        Ok(())
+    }
+}
+
 #[test]
 fn unpack_struct() {
-    #[derive(Debug, PartialEq)]
-    struct Point {
-        x: f32,
-        y: f32,
-    }
-
-    impl FromJSON for Point {
-        fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
-            let o = v.as_object()?;
-
-            extract_field(o, "x", &mut res.x)?;
-            extract_field(o, "y", &mut res.y)?;
-
-            Ok(())
-        }
-    }
-
     let mut p = Point { x: 0.0, y: 0.0 };
 
     let json = "{\"x\": 3.14, \"y\": 1.161}";
@@ -122,3 +134,44 @@ fn unpack_struct() {
 
     assert_eq!(p, Point { x: 3.14, y: 1.161 });
 }
+
+#[derive(Debug, PartialEq, Default)]
+struct Mesh {
+    points: Vec<Point>,
+    indeces: Vec<u32>,
+}
+
+impl FromJSON for Mesh {
+    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
+        let o = v.as_object()?;
+        extract_field(o, "points", &mut res.points)?;
+        extract_field(o, "indeces", &mut res.indeces)?;
+
+        Ok(())
+    }
+}
+
+#[test]
+fn unpack_vec() {
+    let expected = Mesh {
+        points: vec![
+            Point { x: 0.0, y: 0.0 },
+            Point { x: 0.0, y: 10.0 },
+            Point { x: 10.0, y: 0.0 },
+        ],
+        indeces: vec![0, 2, 1],
+    };
+
+    let json = "{\"points\":[{\"x\":0.0, \"y\":0.0}, {\"x\": 0.0, \"y\": 10}, {\"x\": 1e1, \"y\": 0.0}], \"indeces\":[0, 2, 1]}";
+
+    let parsed = parse(json).unwrap();
+
+    let mut m: Mesh = Default::default();
+
+    FromJSON::from_json(&parsed, &mut m).unwrap();
+
+    assert_eq!(m, expected);
+}
+
+#[test]
+fn unpack_map() {}

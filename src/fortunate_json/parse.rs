@@ -3,7 +3,7 @@ use std::collections::hash_map::HashMap;
 use crate::fortunate_json::Value;
 
 #[derive(Debug, PartialEq)]
-pub struct ParseError(String);
+pub struct ParseError(pub String);
 
 #[derive(Debug, PartialEq)]
 enum Token<'a> {
@@ -254,11 +254,18 @@ impl<'a> Lexer<'a> {
                     'r' => '\r',
                     't' => '\t',
                     'u' => {
+                        let gch = |ch: &mut std::str::Chars| match ch.next() {
+                            None => Err(ParseError(
+                                "Unexpected EOF when parsing unicode escape in string literal"
+                                    .to_owned(),
+                            )),
+                            Some(c) => Ok(c),
+                        };
                         // FIXME: Not safe.
-                        let d1 = chars.next().unwrap();
-                        let d2 = chars.next().unwrap();
-                        let d3 = chars.next().unwrap();
-                        let d4 = chars.next().unwrap();
+                        let d1 = gch(&mut chars)?;
+                        let d2 = gch(&mut chars)?;
+                        let d3 = gch(&mut chars)?;
+                        let d4 = gch(&mut chars)?;
                         char::from_u32(Self::parse_hex(d1, d2, d3, d4)?).unwrap()
                     }
                     c => c,

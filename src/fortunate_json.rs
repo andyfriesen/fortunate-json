@@ -1,5 +1,6 @@
 pub mod parse;
 
+use parse::ParseError;
 use std::collections::hash_map::HashMap;
 use std::hash::Hash;
 use std::str::FromStr;
@@ -90,7 +91,7 @@ where
     Ok(())
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct DecodeError;
 
 pub trait FromJSON {
@@ -114,6 +115,18 @@ impl FromJSON for f32 {
     }
 }
 
+impl FromJSON for u32 {
+    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
+        let n = v.as_float()?;
+        if n != n.floor() {
+            Err(DecodeError {})
+        } else {
+            *res = n as u32;
+            Ok(())
+        }
+    }
+}
+
 impl<T> FromJSON for Vec<T>
 where
     T: FromJSON + Default,
@@ -127,6 +140,25 @@ where
             let mut e = Default::default();
             FromJSON::from_json(elem, &mut e)?;
             res.push(e);
+        }
+
+        Ok(())
+    }
+}
+
+impl<T> FromJSON for std::collections::HashSet<T>
+where
+    T: FromJSON + Default + Eq + Hash,
+{
+    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
+        let a = v.as_array()?;
+        res.clear();
+        res.reserve(a.len());
+
+        for elem in a {
+            let mut e = Default::default();
+            FromJSON::from_json(elem, &mut e)?;
+            res.insert(e);
         }
 
         Ok(())
@@ -173,4 +205,34 @@ where
         }
         Ok(())
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum JSONError {
+    ParseError(String),
+    DecodeError,
+}
+
+impl From<ParseError> for JSONError {
+    fn from(p: ParseError) -> JSONError {
+        let ParseError(msg) = p;
+        JSONError::ParseError(msg)
+    }
+}
+
+impl From<DecodeError> for JSONError {
+    fn from(_: DecodeError) -> JSONError {
+        JSONError::DecodeError {}
+    }
+}
+
+pub fn decode<T>(s: &str) -> Result<T, JSONError>
+where
+    T: FromJSON + Default,
+{
+    let v = parse(s)?;
+
+    let mut res: T = Default::default();
+    FromJSON::from_json(&v, &mut res)?;
+    Ok(res)
 }
