@@ -50,10 +50,17 @@ impl Value {
     }
 }
 
-pub fn extract_field<T>(o: &HashMap<String, Value>, key: &str, res: &mut T) -> Result<(), DecodeError> where T : FromJSON {
+pub fn extract_field<T>(
+    o: &HashMap<String, Value>,
+    key: &str,
+    res: &mut T,
+) -> Result<(), DecodeError>
+where
+    T: FromJSON,
+{
     let v = match o.get(key) {
-        None => return Err(DecodeError{}),
-        Some(a) => a
+        None => return Err(DecodeError {}),
+        Some(a) => a,
     };
 
     T::from_json(v, res)?;
@@ -61,10 +68,17 @@ pub fn extract_field<T>(o: &HashMap<String, Value>, key: &str, res: &mut T) -> R
     Ok(())
 }
 
-pub fn extract_optional_field<T>(o: &HashMap<String, Value>, key: &str, res: &mut Option<T>) -> Result<(), DecodeError> where T : FromJSON + Default {
+pub fn extract_optional_field<T>(
+    o: &HashMap<String, Value>,
+    key: &str,
+    res: &mut Option<T>,
+) -> Result<(), DecodeError>
+where
+    T: FromJSON + Default,
+{
     let v = match o.get(key) {
         None => return Ok(()),
-        Some(a) => a
+        Some(a) => a,
     };
 
     let mut r = Default::default();
@@ -141,6 +155,22 @@ where
             res.insert(key, value);
         }
 
+        Ok(())
+    }
+}
+
+impl<T> FromJSON for Option<T>
+where
+    T: FromJSON + Default,
+{
+    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
+        if let Value::Null = v {
+            *res = None;
+        } else {
+            let mut r = Default::default();
+            FromJSON::from_json(v, &mut r)?;
+            *res = Some(r);
+        }
         Ok(())
     }
 }

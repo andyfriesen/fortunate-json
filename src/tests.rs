@@ -1,6 +1,5 @@
-
+use crate::fortunate_json::{extract_field, parse, DecodeError, FromJSON, Value};
 use std::collections::hash_map::HashMap;
-use crate::fortunate_json::{Value, DecodeError, FromJSON, parse, extract_field};
 
 // TODO: Like a billion tests around error conditions.
 
@@ -99,7 +98,7 @@ fn unpack_struct() {
     #[derive(Debug, PartialEq)]
     struct Point {
         x: f32,
-        y: f32
+        y: f32,
     }
 
     impl FromJSON for Point {
@@ -113,7 +112,7 @@ fn unpack_struct() {
         }
     }
 
-    let mut p = Point{x: 0.0, y: 0.0};
+    let mut p = Point { x: 0.0, y: 0.0 };
 
     let json = "{\"x\": 3.14, \"y\": 1.161}";
 
@@ -121,5 +120,5 @@ fn unpack_struct() {
 
     FromJSON::from_json(&parsed, &mut p).unwrap();
 
-    assert_eq!(p, Point{x: 3.14, y:1.161});
+    assert_eq!(p, Point { x: 3.14, y: 1.161 });
 }
