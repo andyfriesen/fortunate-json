@@ -261,7 +261,6 @@ impl<'a> Lexer<'a> {
                             )),
                             Some(c) => Ok(c),
                         };
-                        // FIXME: Not safe.
                         let d1 = gch(&mut chars)?;
                         let d2 = gch(&mut chars)?;
                         let d3 = gch(&mut chars)?;
