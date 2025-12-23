@@ -51,11 +51,7 @@ impl Value {
     }
 }
 
-pub fn extract_field<T>(
-    o: &HashMap<String, Value>,
-    key: &str,
-    res: &mut T,
-) -> Result<(), DecodeError>
+pub fn extract_field<T>(o: &HashMap<String, Value>, key: &str) -> Result<T, DecodeError>
 where
     T: FromJSON,
 {
@@ -64,65 +60,53 @@ where
         Some(a) => a,
     };
 
-    T::from_json(v, res)?;
-
-    Ok(())
+    T::from_json(v)
 }
 
 pub fn extract_optional_field<T>(
     o: &HashMap<String, Value>,
     key: &str,
-    res: &mut Option<T>,
-) -> Result<(), DecodeError>
+) -> Result<Option<T>, DecodeError>
 where
     T: FromJSON + Default,
 {
-    let v = match o.get(key) {
-        None => return Ok(()),
-        Some(a) => a,
-    };
-
-    let mut r = Default::default();
-
-    T::from_json(v, &mut r)?;
-
-    *res = Some(r);
-
-    Ok(())
+    match o.get(key) {
+        None => Ok(None),
+        Some(a) => Ok(Some(T::from_json(a)?)),
+    }
 }
 
 #[derive(Debug, PartialEq)]
 pub struct DecodeError;
 
-pub trait FromJSON {
-    // fn from_json(v: &Value) -> Result<Self, DecodeError>;
-    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError>;
+pub trait FromJSON
+where
+    Self: Sized,
+{
+    fn from_json(v: &Value) -> Result<Self, DecodeError>;
 }
 
 impl FromJSON for String {
-    fn from_json(v: &Value, res: &mut String) -> Result<(), DecodeError> {
+    fn from_json(v: &Value) -> Result<Self, DecodeError> {
         let s = v.as_string()?;
-        res.clone_from(s);
-        Ok(())
+        Ok(s.clone())
     }
 }
 
 impl FromJSON for f32 {
-    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
+    fn from_json(v: &Value) -> Result<Self, DecodeError> {
         let n = v.as_float()?;
-        *res = n;
-        Ok(())
+        Ok(n)
     }
 }
 
 impl FromJSON for u32 {
-    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
+    fn from_json(v: &Value) -> Result<Self, DecodeError> {
         let n = v.as_float()?;
         if n != n.floor() {
             Err(DecodeError {})
         } else {
-            *res = n as u32;
-            Ok(())
+            Ok(n as u32)
         }
     }
 }
@@ -131,18 +115,15 @@ impl<T> FromJSON for Vec<T>
 where
     T: FromJSON + Default,
 {
-    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
+    fn from_json(v: &Value) -> Result<Self, DecodeError> {
         let a = v.as_array()?;
-        res.clear();
-        res.reserve_exact(a.len());
+        let mut res = Vec::with_capacity(a.len());
 
         for elem in a {
-            let mut e = Default::default();
-            FromJSON::from_json(elem, &mut e)?;
-            res.push(e);
+            res.push(FromJSON::from_json(elem)?);
         }
 
-        Ok(())
+        Ok(res)
     }
 }
 
@@ -150,18 +131,15 @@ impl<T> FromJSON for std::collections::HashSet<T>
 where
     T: FromJSON + Default + Eq + Hash,
 {
-    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
+    fn from_json(v: &Value) -> Result<Self, DecodeError> {
         let a = v.as_array()?;
-        res.clear();
-        res.reserve(a.len());
+        let mut res = Self::with_capacity(a.len());
 
         for elem in a {
-            let mut e = Default::default();
-            FromJSON::from_json(elem, &mut e)?;
-            res.insert(e);
+            res.insert(FromJSON::from_json(elem)?);
         }
 
-        Ok(())
+        Ok(res)
     }
 }
 
@@ -170,24 +148,22 @@ where
     K: FromJSON + FromStr + Eq + Hash,
     V: FromJSON + Default,
 {
-    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
+    fn from_json(v: &Value) -> Result<Self, DecodeError> {
         let hm = v.as_object()?;
 
-        res.clear();
+        let mut res = Self::with_capacity(hm.len());
 
         for (k, v) in hm {
-            let key = match FromStr::from_str(k.as_str()) {
+            // let key = k.as_str()?;
+            let key = match FromStr::from_str(k) {
                 Ok(k) => k,
-                Err(_) => return Err(DecodeError {}), // FIXME
+                Err(_) => return Err(DecodeError {}), // FIXME: Better error here
             };
 
-            let mut value = Default::default();
-            FromJSON::from_json(v, &mut value)?;
-
-            res.insert(key, value);
+            res.insert(key, FromJSON::from_json(v)?);
         }
 
-        Ok(())
+        Ok(res)
     }
 }
 
@@ -195,15 +171,12 @@ impl<T> FromJSON for Option<T>
 where
     T: FromJSON + Default,
 {
-    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
+    fn from_json(v: &Value) -> Result<Self, DecodeError> {
         if let Value::Null = v {
-            *res = None;
+            Ok(None)
         } else {
-            let mut r = Default::default();
-            FromJSON::from_json(v, &mut r)?;
-            *res = Some(r);
+            Ok(Some(FromJSON::from_json(v)?))
         }
-        Ok(())
     }
 }
 
@@ -232,7 +205,5 @@ where
 {
     let v = parse(s)?;
 
-    let mut res: T = Default::default();
-    FromJSON::from_json(&v, &mut res)?;
-    Ok(res)
+    Ok(FromJSON::from_json(&v)?)
 }

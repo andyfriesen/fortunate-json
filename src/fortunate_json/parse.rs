@@ -24,7 +24,7 @@ struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
-    fn new(s: &[u8]) -> Lexer {
+    fn new(s: &[u8]) -> Lexer<'_> {
         Lexer { s: s, pos: 0 }
     }
 
@@ -78,7 +78,7 @@ impl<'a> Lexer<'a> {
         b >= b'0' && b <= b'9'
     }
 
-    fn token(&mut self) -> Result<Token, ParseError> {
+    fn token(&mut self) -> Result<Token<'a>, ParseError> {
         self.skip_whitespace();
 
         if self.eof() {

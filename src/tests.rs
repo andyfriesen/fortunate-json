@@ -112,25 +112,23 @@ struct Point {
 }
 
 impl FromJSON for Point {
-    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
+    fn from_json(v: &Value) -> Result<Self, DecodeError> {
         let o = v.as_object()?;
 
-        extract_field(o, "x", &mut res.x)?;
-        extract_field(o, "y", &mut res.y)?;
-
-        Ok(())
+        Ok(Point {
+            x: extract_field(o, "x")?,
+            y: extract_field(o, "y")?,
+        })
     }
 }
 
 #[test]
 fn unpack_struct() {
-    let mut p = Point { x: 0.0, y: 0.0 };
-
     let json = "{\"x\": 3.14, \"y\": 1.161}";
 
     let parsed = parse(json).unwrap();
 
-    FromJSON::from_json(&parsed, &mut p).unwrap();
+    let p: Point = FromJSON::from_json(&parsed).unwrap();
 
     assert_eq!(p, Point { x: 3.14, y: 1.161 });
 }
@@ -142,12 +140,13 @@ struct Mesh {
 }
 
 impl FromJSON for Mesh {
-    fn from_json(v: &Value, res: &mut Self) -> Result<(), DecodeError> {
+    fn from_json(v: &Value) -> Result<Self, DecodeError> {
         let o = v.as_object()?;
-        extract_field(o, "points", &mut res.points)?;
-        extract_field(o, "indeces", &mut res.indeces)?;
 
-        Ok(())
+        Ok(Mesh {
+            points: extract_field(o, "points")?,
+            indeces: extract_field(o, "indeces")?,
+        })
     }
 }
 
@@ -166,9 +165,7 @@ fn unpack_vec() {
 
     let parsed = parse(json).unwrap();
 
-    let mut m: Mesh = Default::default();
-
-    FromJSON::from_json(&parsed, &mut m).unwrap();
+    let m: Mesh = FromJSON::from_json(&parsed).unwrap();
 
     assert_eq!(m, expected);
 }
